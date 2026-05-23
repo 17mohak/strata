@@ -20,3 +20,11 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Seed database (regenerate with: python seed_deezer.py)
+*.db
+
+# Node
+node_modules/
+.next/
+out/

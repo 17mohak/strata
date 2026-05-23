@@ -8,10 +8,9 @@ theory, and DNA similarity to other songs.
 Built for musicians, producers, music students, and audio engineers who want to
 understand how a song is constructed.
 
-> **Status:** Week 2 complete — HPSS-powered pipeline, template chord detection,
-> music21 theory analysis, and a full composite emotional arc (Energy / Tension /
-> Valence) with hit-moment detection are all live.
-> DNA fingerprint (Week 3) and the Next.js frontend (Week 4) are next.
+> **Status:** Week 4 complete — full-stack app with dark music-app frontend,
+> interactive waveform with section overlays, emotional arc chart, theory
+> moments, DNA match cards, and a 50-song FAISS-powered similarity engine.
 
 ## What works today
 
@@ -39,11 +38,23 @@ understand how a song is constructed.
   Pre-chorus / Chorus / Bridge / Outro by relative energy.
 - **Memory-safe pipeline** — proactive `del` + `gc.collect()` after each major
   feature extraction stage; safe to run in 512 MB containers.
+- **DNA fingerprint engine** — 73-dimensional feature vector (chroma, tonality,
+  timbre, brightness, width, rolloff, rhythm, energy contour, percussiveness,
+  spectral flux, harmonic stability) with FAISS IndexFlatIP cosine-similarity
+  search over a z-score-standardised seed database.
+- **Seed database** — 50 iconic songs across decades and genres, seeded from
+  iTunes 30-second previews via an automated pipeline (`seed_deezer.py`).
+  Scales to 10,000+ songs via CSV input on Kaggle.
+- **Per-group explainability** — match reasons explain *which* sonic dimensions
+  drove the similarity (e.g. "Both tracks share timbral fingerprint and
+  harmonic character"), with a dominant match type (harmonic / timbral /
+  rhythmic / tension_curve).
 
 ## Tech stack
 
-- Python 3.11+ · FastAPI · uvicorn
-- librosa · numpy · scipy · soundfile · music21
+**Backend:** Python 3.11+ · FastAPI · uvicorn · librosa · numpy · scipy · soundfile · music21 · FAISS · PyAV
+
+**Frontend:** Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · wavesurfer.js · Chart.js · Lucide Icons
 
 ## Project structure
 
@@ -52,28 +63,53 @@ strata/
 ├─ backend/
 │  ├─ main.py           # FastAPI app: /analyze (POST) + /analyze/{job_id} (GET)
 │  ├─ analyzer.py       # librosa analysis pipeline + segmentation
+│  ├─ dna_engine.py     # FAISS-backed DNA fingerprint engine + SQLite store
+│  ├─ seed_deezer.py    # Batch seeder: iTunes API -> preview -> features -> DB
+│  ├─ seed.db           # Pre-built seed database (50 songs, git-ignored)
 │  └─ requirements.txt
+├─ frontend/
+│  ├─ app/
+│  │  ├─ components/    # FileUpload, WaveformPlayer, EmotionalArcChart,
+│  │  │                 # DNAMatches, TheoryMoments, Sections, MetaBar
+│  │  ├─ layout.tsx     # Root layout with dark theme
+│  │  ├─ page.tsx       # Main upload -> analysis -> results page
+│  │  └─ globals.css    # Dark music-app theme
+│  ├─ lib/
+│  │  ├─ api.ts         # Upload + polling API client
+│  │  └─ types.ts       # TypeScript types matching backend contract
+│  └─ package.json
 └─ README.md
 ```
 
 ## Setup
 
 ```bash
+# Backend
 cd backend
 python -m venv .venv
 # Windows (PowerShell): .\.venv\Scripts\Activate.ps1
 # macOS/Linux:          source .venv/bin/activate
 pip install -r requirements.txt
+python seed_deezer.py          # seed the DNA database (50 songs, ~2 min)
+
+# Frontend
+cd ../frontend
+npm install
 ```
 
 ## Run
 
 ```bash
+# Terminal 1 — Backend (port 8000)
 cd backend
 uvicorn main:app --reload --port 8000
+
+# Terminal 2 — Frontend (port 3000)
+cd frontend
+npm run dev
 ```
 
-The API is then available at `http://127.0.0.1:8000`.
+Open `http://localhost:3000` in your browser.
 
 ## API
 
@@ -117,12 +153,18 @@ Complete response (abridged):
   "emotional_arc": null,
   "hit_moment": null,
   "theory_moments": [],
-  "dna_matches": []
+  "dna_matches": [
+    {
+      "title": "No Woman, No Cry",
+      "artist": "Bob Marley & The Wailers",
+      "similarity": 0.58,
+      "match_reason": "Both tracks share rhythmic density and drive and frequency distribution.",
+      "match_type": "timbral",
+      "album_art_url": "https://..."
+    }
+  ]
 }
 ```
-
-Fields returning `null` / `[]` (emotional arc, hit moment, theory moments, DNA
-matches) are populated in later milestones.
 
 ## Roadmap
 
@@ -130,8 +172,8 @@ matches) are populated in later milestones.
 |------|-------|
 | **1** ✅ | Core audio pipeline: upload → features → segmentation → async API + JSON contract |
 | **2** ✅ | HPSS, template chord detection, music21 Roman-numeral theory, composite emotional arc (Energy / Tension / Valence), hit-moment detector, memory-safe GC |
-| **3** | DNA fingerprint: MERT-v1-95M embeddings for a seed song database, cosine-similarity top-3 match with plain-English reasons |
-| **4** | Next.js 14 frontend: Wavesurfer.js structure timeline, Chart.js emotional arc, theory moments list, DNA match cards; deploy to Railway + Vercel |
+| **3** ✅ | DNA fingerprint: 73D feature vectors, FAISS cosine-similarity, z-score standardisation, 50-song iTunes seed DB, per-group explainability |
+| **4** ✅ | Next.js 16 frontend: dark music-app UI, wavesurfer.js waveform + section overlay, Chart.js emotional arc, theory moments, DNA match cards with album art, drag-and-drop upload |
 
 ## Notes
 
@@ -141,5 +183,11 @@ matches) are populated in later milestones.
 - `music21` is used **only** for Roman-numeral mapping of pre-detected chord
   labels — not for score ingestion or audio processing. This sidesteps its
   audio-analysis limitations and keeps it fast.
-- Week 3 will use `m-a-p/MERT-v1-95M` (Hugging Face) for audio embeddings —
-  no training required, runs on CPU, installs via `transformers`.
+- Week 3 uses hand-crafted 73D feature vectors (chroma, MFCC, spectral stats,
+  energy contour) instead of MERT embeddings — lighter weight, no GPU needed,
+  and the per-group explainability gives richer match reasons than a single
+  opaque embedding would.
+- Seed database ships with 50 songs; scale to 10K+ by providing a CSV to
+  `seed_deezer.py --input songs.csv` (designed for Kaggle batch runs).
+- iTunes Search API is used instead of Deezer (Deezer is geo-restricted in
+  India). PyAV handles M4A→WAV conversion for the iTunes AAC previews.

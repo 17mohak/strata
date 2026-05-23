@@ -1,11 +1,11 @@
-"""Audio analysis pipeline — Week 2 upgrade.
+"""Audio analysis pipeline — Weeks 2-3.
 
-Refactored from the Week 1 baseline to add:
   - HPSS (beat tracking on y_perc, chroma on y_harm)
   - Template-based chord detection with median smoothing
   - music21 Roman-numeral pass for theory_moments and progression summary
   - Composite emotional arc: Energy / Tension / Valence (0-100)
   - Hit-moment detector with structured plain-English explanation
+  - DNA fingerprint: 73D feature vector → FAISS cosine-similarity query
   - Proactive del + gc.collect() to stay within 512MB container ceilings
 """
 
@@ -109,6 +109,12 @@ def run_analysis(path: str) -> dict:
     S_harm = np.abs(librosa.stft(y_harm, hop_length=HOP, n_fft=2048))
     spec_centroid = librosa.feature.spectral_centroid(S=S_harm, sr=sr)[0]
 
+    # DNA-vector features: MFCC, bandwidth, rolloff from the same STFT.
+    mfcc      = librosa.feature.mfcc(S=librosa.power_to_db(S_harm ** 2), sr=sr, n_mfcc=13)
+    bandwidth = librosa.feature.spectral_bandwidth(S=S_harm, sr=sr)[0]
+    rolloff   = librosa.feature.spectral_rolloff(S=S_harm, sr=sr)[0]
+    zcr       = librosa.feature.zero_crossing_rate(y_harm, hop_length=HOP)[0]
+
     # Half-wave-rectified flux: sum of squared positive spectral deltas.
     pos_delta = np.maximum(np.diff(S_harm, axis=1), 0.0)
     flux = np.concatenate([[0.0], np.sqrt((pos_delta ** 2).sum(axis=0))])
@@ -168,8 +174,23 @@ def run_analysis(path: str) -> dict:
                 hit_moment["label"] = f"Drop into {seg['label']}"
                 break
 
-    # ── 11. Cleanup ───────────────────────────────────────────────────────────
+    # ── 11. DNA fingerprint ──────────────────────────────────────────────────
+    try:
+        from dna_engine import build_vector, get_engine
+
+        dna_vec = build_vector(
+            chroma=chroma, mode=mode, tempo=tempo, mfcc=mfcc,
+            centroid=spec_centroid, bandwidth=bandwidth, rolloff=rolloff,
+            onset_env=onset_env, rms=rms_full, zcr=zcr, flux=flux,
+        )
+        engine = get_engine()
+        dna_matches = engine.query(dna_vec, top_k=3)
+    except Exception:
+        dna_matches = []
+
+    # ── 12. Cleanup ───────────────────────────────────────────────────────────
     del chroma, rms_full, onset_env, spec_centroid, flux
+    del mfcc, bandwidth, rolloff, zcr
     del rms_g, flux_g, onset_g, chroma_g, centroid_g
     gc.collect()
 
@@ -188,7 +209,7 @@ def run_analysis(path: str) -> dict:
         "emotional_arc": emotional_arc,
         "hit_moment": hit_moment,
         "theory_moments": theory_moments,
-        "dna_matches": [],  # Week 3 (MERT embeddings)
+        "dna_matches": dna_matches,
     }
 
 

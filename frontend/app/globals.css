@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #e4e4e7;
+  --card: #141419;
+  --card-border: #27272a;
+  --accent: #8b5cf6;
+  --accent-glow: rgba(139, 92, 246, 0.15);
+  --muted: #71717a;
+  --success: #22c55e;
+  --energy: #f97316;
+  --tension: #ef4444;
+  --valence: #3b82f6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-accent: var(--accent);
+  --color-accent-glow: var(--accent-glow);
+  --color-muted: var(--muted);
+  --color-success: var(--success);
+  --color-energy: var(--energy);
+  --color-tension: var(--tension);
+  --color-valence: var(--valence);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Wavesurfer overrides */
+#waveform ::part(cursor) {
+  border-color: var(--accent) !important;
+}
+
+/* Chart.js canvas */
+.chart-wrapper canvas {
+  max-height: 220px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
