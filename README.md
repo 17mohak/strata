@@ -8,26 +8,42 @@ theory, and DNA similarity to other songs.
 Built for musicians, producers, music students, and audio engineers who want to
 understand how a song is constructed.
 
-> **Status:** Week 1 — the core audio pipeline and analysis API are complete.
-> Emotional arc, theory engine, and DNA fingerprint are stubbed and land in
-> later milestones (see [Roadmap](#roadmap)).
+> **Status:** Week 2 complete — HPSS-powered pipeline, template chord detection,
+> music21 theory analysis, and a full composite emotional arc (Energy / Tension /
+> Valence) with hit-moment detection are all live.
+> DNA fingerprint (Week 3) and the Next.js frontend (Week 4) are next.
 
 ## What works today
 
 - **Upload → analyze → poll** async API (`/analyze`), so long-running analysis
   never blocks the HTTP request.
-- **librosa pipeline:** audio load, tempo + beat tracking, RMS energy, onset
-  strength, chromagram.
-- **Key + mode detection** via Krumhansl-Schmuckler key profiles.
-- **Rule-based section segmentation** (no ML): the song is cut on a uniform time
-  grid using energy, onset density, and harmonic content, then each section is
-  labeled Intro / Verse / Pre-chorus / Chorus / Bridge / Outro by its relative
-  energy. Boundaries snap to detected beats.
+- **HPSS** — the signal is split into harmonic and percussive layers on load.
+  Beat tracking runs on the percussive layer (no harmonic phase confusion);
+  chroma and spectral features run on the harmonic layer (no drum-hit bleed).
+- **Key + mode detection** via Krumhansl-Schmuckler profiles on harmonic chroma.
+- **Template-based chord detection** — cosine similarity against 24 major/minor
+  triad templates on every 0.5 s grid cell, median-filtered to suppress flicker.
+- **music21 theory analysis** — detected chord sequence is mapped to Roman
+  numerals in the song's key; non-diatonic chords are flagged as `theory_moments`.
+- **Progression summary** — first four unique Roman numerals (e.g. `i–VI–III–VII`).
+- **Composite emotional arc (0–100):**
+  - *Energy* — normalised RMS from the full mix.
+  - *Tension* — spectral flux + |dRMS/dt|, Gaussian-smoothed.
+  - *Valence* — chroma consonance score (interval weighting) + spectral centroid
+    brightness proxy, Gaussian-smoothed.
+- **Hit-moment detector** — finds the steepest rolling positive delta of
+  (Energy + Onset Density) that immediately follows a low-energy window (the
+  classic "drop"), with a structured plain-English explanation.
+- **Rule-based section segmentation** — uniform 0.5 s grid segmentation using
+  energy + onset + chroma, boundaries snapped to beats, labeled Intro / Verse /
+  Pre-chorus / Chorus / Bridge / Outro by relative energy.
+- **Memory-safe pipeline** — proactive `del` + `gc.collect()` after each major
+  feature extraction stage; safe to run in 512 MB containers.
 
 ## Tech stack
 
 - Python 3.11+ · FastAPI · uvicorn
-- librosa · numpy · scipy · soundfile
+- librosa · numpy · scipy · soundfile · music21
 
 ## Project structure
 
@@ -112,13 +128,18 @@ matches) are populated in later milestones.
 
 | Week | Scope |
 |------|-------|
-| **1** ✅ | Core audio pipeline: upload → features → segmentation → API + JSON contract |
-| 2 | Emotional arc (energy/tension/valence), hit-moment detection, music theory engine (music21) |
-| 3 | DNA fingerprint: embeddings for a seed song database + cosine-similarity matching |
-| 4 | Next.js frontend (Wavesurfer.js timeline, Chart.js arc), polish, deploy |
+| **1** ✅ | Core audio pipeline: upload → features → segmentation → async API + JSON contract |
+| **2** ✅ | HPSS, template chord detection, music21 Roman-numeral theory, composite emotional arc (Energy / Tension / Valence), hit-moment detector, memory-safe GC |
+| **3** | DNA fingerprint: MERT-v1-95M embeddings for a seed song database, cosine-similarity top-3 match with plain-English reasons |
+| **4** | Next.js 14 frontend: Wavesurfer.js structure timeline, Chart.js emotional arc, theory moments list, DNA match cards; deploy to Railway + Vercel |
 
 ## Notes
 
-- `essentia` and `music21` from the original spec are intentionally deferred:
-  `essentia` has no reliable Windows wheels, so Week 1 key detection uses
-  librosa's chromagram instead. `music21` arrives with the Week 2 theory engine.
+- `essentia` from the original spec is permanently replaced: it has no reliable
+  Windows pip wheels. Key detection uses librosa's chromagram +
+  Krumhansl-Schmuckler profiles instead, which is equivalent for this use case.
+- `music21` is used **only** for Roman-numeral mapping of pre-detected chord
+  labels — not for score ingestion or audio processing. This sidesteps its
+  audio-analysis limitations and keeps it fast.
+- Week 3 will use `m-a-p/MERT-v1-95M` (Hugging Face) for audio embeddings —
+  no training required, runs on CPU, installs via `transformers`.
